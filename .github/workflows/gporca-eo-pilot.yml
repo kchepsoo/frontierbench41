@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: gporca-eo-pilot-gate
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   native:

@@ -71,7 +71,7 @@
 +            if (dir != nullptr)
 +            {
 +                char path[1024];
-+                int length = std::snprintf(path, sizeof(path), "%s/%ld.log", dir, (long)::getpid());
++                int length = ::snprintf(path, sizeof(path), "%s/%ld.log", dir, (long)::getpid());
 +                if (length < 0 || length >= (int)sizeof(path) ||
 +                    std::freopen(path, "a", stderr) == nullptr)
 +                    GPOS_RAISE(gpopt::ExmaGPOPT, gpopt::ExmiUnsupportedOp,
