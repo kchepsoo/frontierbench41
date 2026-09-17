@@ -57,10 +57,10 @@ def connect(e=1, o=1, trace=False, mode='exhaustive'):
             'statement_timeout': '0', 'optimizer_nestloop_factor': '1024',
             'optimizer_sort_factor': '1', 'optimizer_spilling_mem_threshold': '0',
             'gp_autostats_mode': 'none', 'gp_autostats_mode_in_functions': 'none',
-            'search_path': 'tpch,public',
         }
         for key, value in settings.items():
             cur.execute('SET '+key+' = %s', (value,))
+        cur.execute('SET search_path = tpch, public')
     return c
 
 

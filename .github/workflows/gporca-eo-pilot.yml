@@ -71,6 +71,21 @@ jobs:
         with:
           path: ${{ runner.temp }}/gporca-eo-pilot/install
           key: ${{ steps.nativecache.outputs.cache-primary-key }}
+      - name: Make diagnostic filenames portable
+        if: always()
+        shell: bash
+        run: |
+          sudo python3 - "$RUNNER_TEMP/gporca-eo-pilot/logs" <<'PY_NAMES'
+          from pathlib import Path
+          import sys
+          root=Path(sys.argv[1])
+          for p in root.rglob('*'):
+              if p.is_file() and ':' in p.name:
+                  target=p.with_name(p.name.replace(':','%3A'))
+                  if target.exists():
+                      raise RuntimeError('Diagnostic filename collision')
+                  p.rename(target)
+          PY_NAMES
       - name: Save evidence even when the gate fails
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
