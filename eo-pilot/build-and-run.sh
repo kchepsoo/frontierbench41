@@ -69,8 +69,7 @@ postgres --version > /work/logs/server-version.txt
 pg_config --configure > /work/logs/server-configure.txt
 
 # Coordinator-only optimizer controls must register before initdb can boot.
-postgres -C optimizer_audit_e > /work/logs/guc-preflight.txt
-postgres -C optimizer_audit_o >> /work/logs/guc-preflight.txt
+postgres --describe-config > /work/logs/guc-preflight.tsv
 cd /work/source/gpAux/gpdemo
 finish() {
   status=$?
