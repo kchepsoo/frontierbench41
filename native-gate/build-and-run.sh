@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -eo pipefail
+test "$(id -u)" -ne 0
+id | tee /work/logs/database-user.txt
+date -u +%FT%TZ > /work/logs/started.txt
+cd /work
+commit=8178d4faefeca459f7ef2dd3aa502f23e0d7a5c4
+curl --fail --location --retry 3 --output cloudberry.tar.gz \
+  "https://codeload.github.com/apache/cloudberry/tar.gz/$commit"
+echo 'c799592ba523e6b341df9b6ad8a9abc8818eed6a92a6e91a242a02eabe84dc78  cloudberry.tar.gz' | sha256sum -c -
+tar -xzf cloudberry.tar.gz --strip-components=1 -C /work/source
+printf '%s\n' "$commit" > /work/logs/source-commit.txt
+sha256sum cloudberry.tar.gz > /work/logs/source-sha256.txt
+
+# Ephemeral loopback SSH is required by native cluster-management commands.
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+ssh-keygen -q -t ed25519 -N '' -f "$HOME/.ssh/native_gate"
+cat "$HOME/.ssh/native_gate.pub" >> "$HOME/.ssh/authorized_keys"
+chmod 600 "$HOME/.ssh/authorized_keys"
+ssh-keyscan -H cdw localhost 127.0.0.1 > "$HOME/.ssh/known_hosts"
+cat > "$HOME/.ssh/config" <<'EOF'
+Host cdw localhost 127.0.0.1
+  IdentityFile ~/.ssh/native_gate
+  IdentitiesOnly yes
+  BatchMode yes
+  StrictHostKeyChecking yes
+EOF
+chmod 600 "$HOME/.ssh/config"
+ssh cdw id > /work/logs/loopback-ssh.txt
+
+mkdir -p /work/install/lib
+cp -a /usr/local/xerces-c/lib/libxerces-c*.so* /work/install/lib/
+export LD_LIBRARY_PATH="/work/install/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+cd /work/source
+./configure --prefix=/work/install --enable-orca --disable-external-fts \
+  --with-python --with-pythonsrc-ext --with-libxml --with-openssl \
+  --with-includes=/usr/local/xerces-c/include \
+  --with-libraries=/work/install/lib \
+  2>&1 | tee /work/logs/configure.log
+cp config.log /work/logs/config.log
+jobs=$(nproc)
+if [ "$jobs" -gt 4 ]; then jobs=4; fi
+/usr/bin/time -p make -j"$jobs" 2>&1 | tee /work/logs/build.log
+/usr/bin/time -p make install 2>&1 | tee /work/logs/install.log
+source /work/install/greenplum_path.sh
+postgres --version > /work/logs/server-version.txt
+pg_config --configure > /work/logs/server-configure.txt
+
+cd /work/source/gpAux/gpdemo
+export NUM_PRIMARY_MIRROR_PAIRS=2 WITH_MIRRORS=false WITH_STANDBY=false
+export PORT_BASE=7000
+make cluster 2>&1 | tee /work/logs/cluster.log
+source gpdemo-env.sh
+trap 'gpstop -a -M immediate > /work/logs/shutdown.log 2>&1 || true' EXIT
+export PGHOST=localhost PGUSER=gpadmin PGDATABASE=postgres
+psql -X -v ON_ERROR_STOP=1 -c 'SELECT version(); SHOW optimizer; SELECT gp_opt_version(); SELECT content,role,status,hostname FROM gp_segment_configuration ORDER BY dbid;' > /work/logs/native-state.txt
+python3 /kit/check-results.py
+ps -eo uid,pid,comm,args | awk '$3 == "postgres"' > /work/logs/server-processes.txt
+test -s /work/logs/server-processes.txt
+awk '$1 == 0 {bad=1} END {exit bad}' /work/logs/server-processes.txt
+date -u +%FT%TZ > /work/logs/completed.txt
