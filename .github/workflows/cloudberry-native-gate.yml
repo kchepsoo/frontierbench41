@@ -45,10 +45,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm --hostname cdw --shm-size=1g --ulimit nofile=65536:65536 \
+          docker run --rm --user 0:0 --hostname cdw --shm-size=1g --ulimit nofile=65536:65536 \
             --mount "type=bind,source=$GITHUB_WORKSPACE/native-gate,target=/kit,readonly" \
             --mount "type=bind,source=$RUNNER_TEMP/cloudberry-native,target=/work" \
-            --entrypoint /bin/bash "$CB_IMAGE" /kit/setup.sh \
+            --entrypoint /bin/bash "$CB_IMAGE" -x /kit/setup.sh \
             2>&1 | tee "$RUNNER_TEMP/cloudberry-native/logs/job.log"
       - name: Save evidence even when the gate fails
         if: always()
