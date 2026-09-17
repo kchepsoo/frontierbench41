@@ -1,0 +1,338 @@
+--- a/src/backend/gpopt/utils/COptTasks.cpp
++++ b/src/backend/gpopt/utils/COptTasks.cpp
+@@ -33,6 +33,11 @@
+ #include "gpos/task/CAutoTraceFlag.h"
+ 
+ #include "gpdbcost/CCostModelGPDB.h"
++#include "gpdbcost/CCostModelGPDBLegacy.h"
++#include <cstdlib>
++#include <cstdio>
++#include <iostream>
++#include <unistd.h>
+ #include "gpopt/base/CAutoOptCtxt.h"
+ #include "gpopt/config/CConfigParamMapping.h"
+ #include "gpopt/engine/CCTEConfig.h"
+@@ -469,7 +474,23 @@
+ ICostModel *
+ COptTasks::GetCostModel(CMemoryPool *mp, ULONG num_segments)
+ {
+-	ICostModel *cost_model = GPOS_NEW(mp) CCostModelGPDB(mp, num_segments);
++    if (optimizer_audit_o == 0)
++    {
++        // Restore the former full model, not today's bitmap-only legacy flag.
++        ICostModel *legacy = GPOS_NEW(mp) CCostModelGPDBLegacy(mp, num_segments);
++        if (optimizer_nestloop_factor > 1.0)
++        {
++            CDouble factor(optimizer_nestloop_factor);
++            legacy->GetCostModelParams()->SetParam(
++                CCostModelParamsGPDBLegacy::EcpNLJFactor,
++                factor, factor - 0.5, factor + 0.5);
++        }
++        if (optimizer_sort_factor != 1.0 || optimizer_spilling_mem_threshold != 0.0)
++            GPOS_RAISE(gpopt::ExmaGPOPT, gpopt::ExmiUnsupportedOp,
++                       GPOS_WSZ_LIT("legacy audit requires default sort/spill GUCs"));
++        return legacy;
++    }
++    ICostModel *cost_model = GPOS_NEW(mp) CCostModelGPDB(mp, num_segments);
+ 
+ 	SetCostModelParams(cost_model);
+ 
+@@ -914,6 +935,53 @@
+ 		// set trace flags
+ 		trace_flags = CConfigParamMapping::PackConfigParamInBitset(
+ 			mp, CXform::ExfSentinel);
++        // Modify the packed flags BEFORE SetTraceflags so its normal cleanup
++        // restores every changed bit. No policy state leaks to a later query.
++        const bool audit_fallback = trace_flags->Get(EopttraceEnableLOJInNAryJoin);
++        if (optimizer_audit_e >= 0 && !audit_fallback)
++        {
++            trace_flags->ExchangeClear(GPOPT_DISABLE_XFORM_TF(CXform::ExfExpandNAryJoin));
++            trace_flags->ExchangeClear(GPOPT_DISABLE_XFORM_TF(CXform::ExfExpandNAryJoinMinCard));
++            trace_flags->ExchangeClear(GPOPT_DISABLE_XFORM_TF(CXform::ExfExpandNAryJoinGreedy));
++            trace_flags->ExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfExpandNAryJoinDPv2));
++            const CXform::EXformId varied[] = {CXform::ExfExpandNAryJoinDP,
++                CXform::ExfJoinAssociativity, CXform::ExfInnerJoinCommutativity};
++            for (ULONG i = 0; i < GPOS_ARRAY_SIZE(varied); ++i)
++            {
++                if (optimizer_audit_e == 0)
++                    trace_flags->ExchangeSet(GPOPT_DISABLE_XFORM_TF(varied[i]));
++                else
++                    trace_flags->ExchangeClear(GPOPT_DISABLE_XFORM_TF(varied[i]));
++            }
++        }
++        const char *fixed_p = std::getenv("GPORCA_AUDIT_P_FIXED");
++        if ((optimizer_audit_e >= 0 || optimizer_audit_o >= 0) &&
++            (fixed_p == nullptr || fixed_p[0] != '1'))
++            GPOS_RAISE(gpopt::ExmaGPOPT, gpopt::ExmiUnsupportedOp,
++                       GPOS_WSZ_LIT("audit requires GPORCA_AUDIT_P_FIXED=1"));
++        if (optimizer_audit_trace)
++        {
++            const char *dir = std::getenv("GPORCA_AUDIT_DIR");
++            if (dir != nullptr)
++            {
++                char path[1024];
++                int length = std::snprintf(path, sizeof(path), "%s/%ld.log", dir, (long)::getpid());
++                if (length < 0 || length >= (int)sizeof(path) ||
++                    std::freopen(path, "a", stderr) == nullptr)
++                    GPOS_RAISE(gpopt::ExmaGPOPT, gpopt::ExmiUnsupportedOp,
++                               GPOS_WSZ_LIT("cannot write native audit trace"));
++            }
++            ::setenv("GPORCA_AUDIT_TRACE", "1", 1);
++            std::wcerr << L"AUDIT_POLICY E " << optimizer_audit_e
++                << L" O " << optimizer_audit_o << L" FALLBACK " << audit_fallback
++                << L" P_FIXED " << (fixed_p != nullptr && fixed_p[0] == '1') << L"\n";
++            std::wcerr << L"AUDIT_DISABLED_XFORMS ";
++            for (ULONG i = 0; i < CXform::ExfSentinel; ++i)
++                if (trace_flags->Get(GPOPT_DISABLE_XFORM_TF(i))) std::wcerr << i << L",";
++            std::wcerr << L"\n";
++        }
++        else
++            ::unsetenv("GPORCA_AUDIT_TRACE");
+ 		SetTraceflags(mp, trace_flags, &enabled_trace_flags,
+ 					  &disabled_trace_flags);
+ 
+--- a/src/backend/utils/misc/guc_gp.c
++++ b/src/backend/utils/misc/guc_gp.c
+@@ -294,6 +294,9 @@
+ bool		optimizer_partition_selection_log;
+ int			optimizer_minidump;
+ int			optimizer_cost_model;
++int optimizer_audit_e;
++int optimizer_audit_o;
++bool optimizer_audit_trace;
+ bool		optimizer_metadata_caching;
+ int			optimizer_mdcache_size;
+ bool		optimizer_use_gpdb_allocators;
+@@ -588,6 +591,9 @@
+ 
+ struct config_bool ConfigureNamesBool_gp[] =
+ {
++    {{"optimizer_audit_trace", PGC_USERSET, DEVELOPER_OPTIONS,
++      gettext_noop("Validation-only policy/cost/property diagnostics."), NULL,
++      GUC_NOT_IN_SAMPLE}, &optimizer_audit_trace, false, NULL, NULL, NULL},
+ 	{
+ 		{"maintenance_mode", PGC_POSTMASTER, CUSTOM_OPTIONS,
+ 			gettext_noop("Maintenance Mode"),
+@@ -3310,6 +3316,12 @@
+ 
+ struct config_int ConfigureNamesInt_gp[] =
+ {
++    {{"optimizer_audit_e", PGC_USERSET, DEVELOPER_OPTIONS,
++      gettext_noop("Validation-only E policy: -1 stock, 0 greedy, 1 DPv1."), NULL,
++      GUC_NOT_IN_SAMPLE}, &optimizer_audit_e, -1, -1, 1, NULL, NULL, NULL},
++    {{"optimizer_audit_o", PGC_USERSET, DEVELOPER_OPTIONS,
++      gettext_noop("Validation-only O policy: -1 stock, 0 historical, 1 calibrated."), NULL,
++      GUC_NOT_IN_SAMPLE}, &optimizer_audit_o, -1, -1, 1, NULL, NULL, NULL},
+ 	{
+ 		{"readable_external_table_timeout", PGC_USERSET, EXTERNAL_TABLES,
+ 			gettext_noop("Cancel the query if no data read within N seconds."),
+--- a/src/include/utils/guc.h
++++ b/src/include/utils/guc.h
+@@ -473,6 +473,9 @@
+ extern bool	optimizer_trace_fallback;
+ extern int optimizer_minidump;
+ extern int  optimizer_cost_model;
++extern int optimizer_audit_e;
++extern int optimizer_audit_o;
++extern bool optimizer_audit_trace;
+ extern bool optimizer_metadata_caching;
+ extern int	optimizer_mdcache_size;
+ 
+--- a/src/backend/gporca/libgpopt/src/operators/CPhysicalHashJoin.cpp
++++ b/src/backend/gporca/libgpopt/src/operators/CPhysicalHashJoin.cpp
+@@ -10,6 +10,11 @@
+ //---------------------------------------------------------------------------
+ 
+ #include "gpopt/operators/CPhysicalHashJoin.h"
++
++#include <cstdlib>
++#include <iostream>
++#include "gpos/io/COstreamString.h"
++#include "gpos/string/CWStringDynamic.h"
+ 
+ #include "gpos/base.h"
+ 
+@@ -1276,6 +1281,35 @@
+ 	{
+ 		SetPartPropagateRequests(1);
+ 	}
++
++	// Validation fork: expose both existing legal request strategies in all E
++	// variants. Required properties and their enforcement are unchanged.
++	const bool fixed_requests = nullptr != std::getenv("GPORCA_AUDIT_P_FIXED");
++	if (fixed_requests)
++	{
++		SetPartPropagateRequests(2);
++	}
++	if (nullptr != std::getenv("GPORCA_AUDIT_TRACE"))
++	{
++		CWStringDynamic text(mp);
++		COstreamString os(&text);
++		os << "AUDIT_HJ_BEGIN\nKEY\n";
++		for (ULONG i = 0; i < m_pdrgpexprOuterKeys->Size(); ++i)
++		{
++			os << *(*m_pdrgpexprOuterKeys)[i] << " = "
++			   << *(*m_pdrgpexprInnerKeys)[i] << "\n";
++		}
++		os << "REQUESTS\n";
++		for (ULONG i = 0; i < UlOptRequests(); ++i)
++		{
++			ULONG order, dist, rewind, part;
++			LookupRequest(i, &order, &dist, &rewind, &part);
++			os << order << "," << dist << "," << rewind << "," << part << "\n";
++		}
++		os << "ORIGIN " << static_cast<ULONG>(physical_join->OriginXform())
++		   << " FIXED " << fixed_requests << "\nAUDIT_HJ_END\n";
++		std::wcerr << text.GetBuffer();
++	}
+ }
+ 
+ CExpression *
+--- a/src/backend/gporca/libgpopt/src/base/CReqdPropPlan.cpp
++++ b/src/backend/gporca/libgpopt/src/base/CReqdPropPlan.cpp
+@@ -14,6 +14,11 @@
+ #include "gpos/base.h"
+ #include "gpos/common/CPrintablePointer.h"
+ #include "gpos/error/CAutoTrace.h"
++#include <cstdlib>
++#include <iostream>
++#include "gpos/io/COstreamString.h"
++#include "gpos/string/CWStringDynamic.h"
++#include "gpopt/base/CDrvdPropRelational.h"
+ 
+ #include "gpopt/base/CCTEReq.h"
+ #include "gpopt/base/CColRefSet.h"
+@@ -29,6 +34,7 @@
+ #include "gpopt/operators/CExpressionHandle.h"
+ #include "gpopt/operators/CLogical.h"
+ #include "gpopt/operators/CPhysical.h"
++#include "gpopt/operators/CPhysicalHashJoin.h"
+ #include "gpopt/search/CGroupExpression.h"
+ 
+ 
+@@ -173,6 +179,57 @@
+ 								  prppInput->Pepp()->PppsRequired(),
+ 								  child_index, pdrgpdpCtxt, ulPartPropagateReq),
+ 		CEnfdPartitionPropagation::EppmSatisfy);
++
++	if (nullptr != std::getenv("GPORCA_AUDIT_TRACE"))
++	{
++		CWStringDynamic text(mp);
++		COstreamString os(&text);
++		os << "AUDIT_REQ_BEGIN\nINPUT\n";
++		popPhysical->OsPrint(os);
++		os << "\nREQUEST_TUPLE " << ulOrderReq << "," << ulDistrReq << ","
++		   << ulRewindReq << "," << ulPartPropagateReq;
++		if (CUtils::FHashJoin(popPhysical))
++		{
++			const CPhysicalHashJoin *hj = CPhysicalHashJoin::PopConvert(popPhysical);
++			os << "\nHASH_KEYS\n";
++			for (ULONG i = 0; i < hj->PdrgpexprOuterKeys()->Size(); ++i)
++			{
++				os << *(*hj->PdrgpexprOuterKeys())[i] << " = "
++				   << *(*hj->PdrgpexprInnerKeys())[i] << "\n";
++			}
++		}
++		os << "\nPARENT " << *prppInput << "\nCHILD " << child_index
++		   << " REQUEST " << ulOptReq << "\nRELATIONAL\n";
++		exprhdl.GetRelationalProperties()->OsPrint(os);
++		for (ULONG i = 0; i < exprhdl.Arity(); ++i)
++		{
++			if (!exprhdl.FScalarChild(i))
++			{
++				os << "\nREL_CHILD " << i << "\n";
++				exprhdl.GetRelationalProperties(i)->OsPrint(os);
++			}
++			else
++			{
++				CExpression *scalar = exprhdl.PexprScalarExactChild(i);
++				os << "\nSCALAR_CHILD " << i << "\n";
++				if (nullptr != scalar)
++				{
++					os << *scalar;
++				}
++				else
++				{
++					os << "UNAVAILABLE";
++				}
++			}
++		}
++		os << "\nDERIVED_CONTEXT\n";
++		for (ULONG i = 0; nullptr != pdrgpdpCtxt && i < pdrgpdpCtxt->Size(); ++i)
++		{
++			os << *(*pdrgpdpCtxt)[i] << "\n";
++		}
++		os << "OUTPUT\n" << *this << "\nAUDIT_REQ_END\n";
++		std::wcerr << text.GetBuffer();
++	}
+ }
+ 
+ //---------------------------------------------------------------------------
+--- a/src/backend/gporca/libgpopt/src/base/CCostContext.cpp
++++ b/src/backend/gporca/libgpopt/src/base/CCostContext.cpp
+@@ -1,3 +1,5 @@
++#include <cstdlib>
++#include <iostream>
+ //---------------------------------------------------------------------------
+ //	Greenplum Database
+ //	Copyright (C) 2011 EMC Corp.
+@@ -706,7 +708,19 @@
+ 	}
+ 
+ 	// compute cost using the underlying cost model
+-	return pcm->Cost(exprhdl, &ci);
++	CCost audit_cost = pcm->Cost(exprhdl, &ci);
++    if (nullptr != std::getenv("GPORCA_AUDIT_TRACE"))
++    {
++        std::wcerr << L"AUDIT_COST FULL MODEL " << (ULONG)pcm->Ecmt()
++            << L" HOSTS " << pcm->UlHosts() << L" OP " << (ULONG)exprhdl.Pop()->Eopid()
++            << L" INPUT " << ci.Rows() << L"," << ci.Width() << L"," << ci.NumRebinds()
++            << L" CHILDREN ";
++        for (ULONG i = 0; i < ci.ChildCount(); ++i)
++            std::wcerr << ci.PdRows()[i] << L"," << ci.GetWidth()[i] << L","
++                << ci.PdRebinds()[i] << L"," << ci.PdCost()[i] << L";";
++        std::wcerr << L" OUTPUT " << audit_cost.Get() << L"\n";
++    }
++	return audit_cost;
+ }
+ 
+ //---------------------------------------------------------------------------
+--- a/src/backend/gporca/libgpopt/src/engine/CPartialPlan.cpp
++++ b/src/backend/gporca/libgpopt/src/engine/CPartialPlan.cpp
+@@ -1,3 +1,5 @@
++#include <cstdlib>
++#include <iostream>
+ //---------------------------------------------------------------------------
+ //	Greenplum Database
+ //	Copyright (C) 2014 VMware, Inc. or its affiliates.
+@@ -229,6 +231,17 @@
+ 
+ 	// compute partial plan cost
+ 	CCost cost = pcm->Cost(exprhdl, &ci);
++    if (nullptr != std::getenv("GPORCA_AUDIT_TRACE"))
++    {
++        std::wcerr << L"AUDIT_COST PARTIAL MODEL " << (ULONG)pcm->Ecmt()
++            << L" HOSTS " << pcm->UlHosts() << L" OP " << (ULONG)exprhdl.Pop()->Eopid()
++            << L" INPUT " << ci.Rows() << L"," << ci.Width() << L"," << ci.NumRebinds()
++            << L" CHILDREN ";
++        for (ULONG i = 0; i < ci.ChildCount(); ++i)
++            std::wcerr << ci.PdRows()[i] << L"," << ci.GetWidth()[i] << L","
++                << ci.PdRebinds()[i] << L"," << ci.PdCost()[i] << L";";
++        std::wcerr << L" OUTPUT " << cost.Get() << L"\n";
++    }
+ 
+ 	if (0 < ci.ChildCount() && 1.0 < cost.Get())
+ 	{
+--- a/src/backend/gporca/libgpdbcost/src/Makefile
++++ b/src/backend/gporca/libgpdbcost/src/Makefile
+@@ -10,7 +10,9 @@
+ 
+ include $(top_srcdir)/src/backend/gporca/gporca.mk
+ 
+-OBJS        = CCostModelGPDB.o \
++OBJS        = CCostModelGPDBLegacy.o \
++              CCostModelParamsGPDBLegacy.o \
++              CCostModelGPDB.o \
+               CCostModelParamsGPDB.o \
+               ICostModel.o
+ 

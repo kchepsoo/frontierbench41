@@ -1,0 +1,61 @@
+name: GPORCA frozen E O pilot
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [gporca-eo-pilot]
+    paths: [".github/workflows/gporca-eo-pilot.yml", "eo-pilot/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gporca-eo-pilot-gate
+  cancel-in-progress: false
+
+jobs:
+  native:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      CB_IMAGE: apache/incubator-cloudberry@sha256:7c801b8bab467bc1f3d1b6101e456ed1d6b14624f1cf982b54af807bf24a2d7c
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Prepare ephemeral runner and record resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          # Remove only preinstalled SDKs unused by this job, on this fresh VM.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          mkdir -p "$RUNNER_TEMP/gporca-eo-pilot/logs"
+          df -h | tee "$RUNNER_TEMP/gporca-eo-pilot/logs/disk.txt"
+          free -h | tee "$RUNNER_TEMP/gporca-eo-pilot/logs/memory.txt"
+          lscpu > "$RUNNER_TEMP/gporca-eo-pilot/logs/cpu.txt"
+          test "$(df --output=avail -k "$RUNNER_TEMP" | tail -1)" -ge 20971520
+      - name: Pull pinned upstream build image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "$CB_IMAGE"
+          docker image inspect "$CB_IMAGE" --format '{{json .RepoDigests}}' > "$RUNNER_TEMP/gporca-eo-pilot/logs/image.json"
+      - name: Build and run as non-root database user
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --user 0:0 --hostname cdw --shm-size=1g --ulimit nofile=65536:65536 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/eo-pilot,target=/kit,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/EO_PILOT_PROTOCOL.md,target=/protocol.md,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/gporca-eo-pilot,target=/work" \
+            --entrypoint /bin/bash "$CB_IMAGE" -x /kit/setup.sh \
+            2>&1 | tee "$RUNNER_TEMP/gporca-eo-pilot/logs/job.log"
+      - name: Save evidence even when the gate fails
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gporca-eo-pilot-evidence
+          path: ${{ runner.temp }}/gporca-eo-pilot/logs/
+          retention-days: 7
+          if-no-files-found: warn
