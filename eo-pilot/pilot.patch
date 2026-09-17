@@ -109,7 +109,7 @@
  {
 +    {{"optimizer_audit_trace", PGC_USERSET, DEVELOPER_OPTIONS,
 +      gettext_noop("Validation-only policy/cost/property diagnostics."), NULL,
-+      GUC_NOT_IN_SAMPLE}, &optimizer_audit_trace, false, NULL, NULL, NULL},
++      GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC}, &optimizer_audit_trace, false, NULL, NULL, NULL},
  	{
  		{"maintenance_mode", PGC_POSTMASTER, CUSTOM_OPTIONS,
  			gettext_noop("Maintenance Mode"),
@@ -119,10 +119,10 @@
  {
 +    {{"optimizer_audit_e", PGC_USERSET, DEVELOPER_OPTIONS,
 +      gettext_noop("Validation-only E policy: -1 stock, 0 greedy, 1 DPv1."), NULL,
-+      GUC_NOT_IN_SAMPLE}, &optimizer_audit_e, -1, -1, 1, NULL, NULL, NULL},
++      GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC}, &optimizer_audit_e, -1, -1, 1, NULL, NULL, NULL},
 +    {{"optimizer_audit_o", PGC_USERSET, DEVELOPER_OPTIONS,
 +      gettext_noop("Validation-only O policy: -1 stock, 0 historical, 1 calibrated."), NULL,
-+      GUC_NOT_IN_SAMPLE}, &optimizer_audit_o, -1, -1, 1, NULL, NULL, NULL},
++      GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC}, &optimizer_audit_o, -1, -1, 1, NULL, NULL, NULL},
  	{
  		{"readable_external_table_timeout", PGC_USERSET, EXTERNAL_TABLES,
  			gettext_noop("Cancel the query if no data read within N seconds."),

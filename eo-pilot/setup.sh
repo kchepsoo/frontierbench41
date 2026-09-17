@@ -10,6 +10,7 @@ fi
 # or Docker socket are exposed to it. The server's root guard is untouched.
 install -d -o gpadmin -g gpadmin /work/source /work/install
 chown gpadmin:gpadmin /work /work/logs
+chown -R gpadmin:gpadmin /work/install
 ssh-keygen -A
 mkdir -p /run/sshd
 /usr/sbin/sshd
