@@ -75,7 +75,7 @@ def native_plan(cur, sql, analyze=False):
     if isinstance(result, str):
         result = json.loads(result)
     plan = result[0]
-    if 'GPORCA' not in str(plan.get('Optimizer', '')):
+    if 'GPORCA' not in str(plan.get('Settings', {}).get('Optimizer', plan.get('Optimizer', ''))):
         raise RuntimeError('GPORCA attribution missing: '+encoded(plan)[:500])
     return plan
 
