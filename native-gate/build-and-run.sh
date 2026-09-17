@@ -41,8 +41,8 @@ cd /work/source
 cp config.log /work/logs/config.log
 jobs=$(nproc)
 if [ "$jobs" -gt 4 ]; then jobs=4; fi
-/usr/bin/time -p make -j"$jobs" 2>&1 | tee /work/logs/build.log
-/usr/bin/time -p make install 2>&1 | tee /work/logs/install.log
+{ time -p make -j"$jobs"; } 2>&1 | tee /work/logs/build.log
+{ time -p make install; } 2>&1 | tee /work/logs/install.log
 source /work/install/greenplum_path.sh
 postgres --version > /work/logs/server-version.txt
 pg_config --configure > /work/logs/server-configure.txt
