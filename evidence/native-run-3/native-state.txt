@@ -1,0 +1,7 @@
+ content | role | status | hostname 
+---------+------+--------+----------
+      -1 | p    | u      | cdw
+       0 | p    | u      | cdw
+       1 | p    | u      | cdw
+(3 rows)
+

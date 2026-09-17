@@ -1,0 +1,1 @@
+ '--prefix=/work/install' '--enable-orca' '--disable-external-fts' '--with-python' '--with-pythonsrc-ext' '--with-libxml' '--with-openssl' '--with-includes=/usr/local/xerces-c/include' '--with-libraries=/work/install/lib'

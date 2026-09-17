@@ -1,0 +1,21 @@
+Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..864.13 rows=7 width=12) (actual time=4.000..4.000 rows=7 loops=1)
+  ->  Finalize HashAggregate  (cost=0.00..864.13 rows=4 width=12) (actual time=4.000..4.000 rows=4 loops=1)
+        Group Key: o.category
+        ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=0.00..864.13 rows=4 width=12) (actual time=3.000..4.000 rows=8 loops=1)
+              Hash Key: o.category
+              ->  Streaming Partial HashAggregate  (cost=0.00..864.13 rows=4 width=12) (actual time=3.000..3.000 rows=7 loops=1)
+                    Group Key: o.category
+                    ->  Hash Left Join  (cost=0.00..863.47 rows=5415 width=8) (actual time=2.000..2.000 rows=5080 loops=1)
+                          Hash Cond: (o.order_id = l.order_id)
+                          Extra Text: (seg1)   Hash chain length 5.3 avg, 12 max, using 958 of 131072 buckets.
+                          ->  Seq Scan on orders o  (cost=0.00..431.02 rows=1000 width=8) (actual time=0.000..0.000 rows=1001 loops=1)
+                          ->  Hash  (cost=431.12..431.12 rows=5000 width=4) (actual time=1.000..1.000 rows=5040 loops=1)
+                                Buckets: 131072  Batches: 1  Memory Usage: 1202kB
+                                ->  Seq Scan on lineitems l  (cost=0.00..431.12 rows=5000 width=4) (actual time=0.000..0.000 rows=5040 loops=1)
+Planning Time: 15.978 ms
+  (slice0)    Executor memory: 66K bytes.
+  (slice1)    Executor memory: 123K bytes avg x 2x(0) workers, 123K bytes max (seg0).  Work_mem: 24K bytes max.
+  (slice2)    Executor memory: 1295K bytes avg x 2x(0) workers, 1295K bytes max (seg0).  Work_mem: 1202K bytes max.
+Memory used:  128000kB
+Optimizer: GPORCA
+Execution Time: 8.195 ms

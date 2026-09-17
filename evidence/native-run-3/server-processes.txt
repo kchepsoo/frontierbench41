@@ -1,0 +1,33 @@
+ 1000   18575 postgres        /work/install/bin/postgres -D /work/source/gpAux/gpdemo/datadirs/dbfast1/demoDataDir0 -p 7002 -c gp_role=execute
+ 1000   18576 postgres        /work/install/bin/postgres -D /work/source/gpAux/gpdemo/datadirs/dbfast2/demoDataDir1 -p 7003 -c gp_role=execute
+ 1000   18577 postgres        postgres:  7002, logger process 
+ 1000   18578 postgres        postgres:  7003, logger process 
+ 1000   18581 postgres        postgres:  7002, checkpointer 
+ 1000   18582 postgres        postgres:  7002, background writer 
+ 1000   18583 postgres        postgres:  7003, checkpointer 
+ 1000   18584 postgres        postgres:  7002, walwriter 
+ 1000   18585 postgres        postgres:  7003, background writer 
+ 1000   18586 postgres        postgres:  7003, walwriter 
+ 1000   18587 postgres        postgres:  7002, autovacuum launcher 
+ 1000   18588 postgres        postgres:  7002, stats collector 
+ 1000   18589 postgres        postgres:  7003, autovacuum launcher 
+ 1000   18590 postgres        postgres:  7003, stats collector 
+ 1000   18591 postgres        postgres:  7002, login monitor 
+ 1000   18592 postgres        postgres:  7003, login monitor 
+ 1000   18593 postgres        postgres:  7002, logical replication launcher 
+ 1000   18594 postgres        postgres:  7003, logical replication launcher 
+ 1000   18595 postgres        postgres:  7002, sweeper process 
+ 1000   18596 postgres        postgres:  7003, sweeper process 
+ 1000   18599 postgres        /work/install/bin/postgres -D /work/source/gpAux/gpdemo/datadirs/qddir/demoDataDir-1 -p 7000 -c gp_role=dispatch
+ 1000   18600 postgres        postgres:  7000, master logger process 
+ 1000   18602 postgres        postgres:  7000, checkpointer 
+ 1000   18603 postgres        postgres:  7000, background writer 
+ 1000   18604 postgres        postgres:  7000, walwriter 
+ 1000   18605 postgres        postgres:  7000, autovacuum launcher 
+ 1000   18606 postgres        postgres:  7000, stats collector 
+ 1000   18607 postgres        postgres:  7000, login monitor 
+ 1000   18608 postgres        postgres:  7000, dtx recovery process 
+ 1000   18609 postgres        postgres:  7000, ftsprobe process 
+ 1000   18620 postgres        postgres:  7000, logical replication launcher 
+ 1000   18621 postgres        postgres:  7000, pg_cron launcher 
+ 1000   18622 postgres        postgres:  7000, sweeper process 

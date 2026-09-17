@@ -1,0 +1,39 @@
+{
+  "gate": "NATIVE_SMOKE_PASS",
+  "database_uid": 1000,
+  "scope": "Generated smoke data only; no TPC-H/JOB/TPC-DS inference.",
+  "recovery_scores": null,
+  "timing_scope": "Instrumented EXPLAIN timing, unsuitable as final score.",
+  "queries": [
+    {
+      "query": "aggregate",
+      "multiset_correct": true,
+      "rows": 7,
+      "distinct_rows": 7,
+      "client_wall_seconds": 0.03611520200001905,
+      "explain_client_wall_seconds": 0.03747538300001452,
+      "planning_ms": 14.763,
+      "execution_ms": 9.849
+    },
+    {
+      "query": "duplicates",
+      "multiset_correct": true,
+      "rows": 600,
+      "distinct_rows": 35,
+      "client_wall_seconds": 0.029193095999971774,
+      "explain_client_wall_seconds": 0.029317388999970717,
+      "planning_ms": 12.927,
+      "execution_ms": 3.981
+    },
+    {
+      "query": "outer_join",
+      "multiset_correct": true,
+      "rows": 7,
+      "distinct_rows": 7,
+      "client_wall_seconds": 0.03751046499996846,
+      "explain_client_wall_seconds": 0.036848820000045635,
+      "planning_ms": 15.978,
+      "execution_ms": 8.195
+    }
+  ]
+}

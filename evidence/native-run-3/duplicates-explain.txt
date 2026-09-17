@@ -1,0 +1,18 @@
+Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.44 rows=601 width=8) (actual time=3.000..4.000 rows=600 loops=1)
+  ->  Hash Join  (cost=0.00..862.42 rows=301 width=8) (actual time=2.000..3.000 rows=312 loops=1)
+        Hash Cond: (l.order_id = o.order_id)
+        Extra Text: (seg0)   Hash chain length 1.0 avg, 1 max, using 52 of 524288 buckets.
+        ->  Seq Scan on lineitems l  (cost=0.00..431.28 rows=301 width=8) (actual time=0.000..0.000 rows=312 loops=1)
+              Filter: (order_id < 100)
+              Rows Removed by Filter: 4648
+        ->  Hash  (cost=431.06..431.06 rows=51 width=8) (actual time=0.000..0.000 rows=52 loops=1)
+              Buckets: 524288  Batches: 1  Memory Usage: 4099kB
+              ->  Seq Scan on orders o  (cost=0.00..431.06 rows=51 width=8) (actual time=0.000..0.000 rows=52 loops=1)
+                    Filter: (order_id < 100)
+                    Rows Removed by Filter: 949
+Planning Time: 12.927 ms
+  (slice0)    Executor memory: 46K bytes.
+  (slice1)    Executor memory: 4161K bytes avg x 2x(0) workers, 4161K bytes max (seg0).  Work_mem: 4099K bytes max.
+Memory used:  128000kB
+Optimizer: GPORCA
+Execution Time: 3.981 ms
