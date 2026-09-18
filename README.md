@@ -1,13 +1,7 @@
-# Cloudberry native execution gate
+# GPORCA validation: HOLD
 
-**PASS — native Cloudberry execution on GitHub Actions, without DigitalOcean.**
+[Read the completed native E/O pilot result](EO_PILOT_RESULT.md).
 
-[Successful run](https://github.com/kchepsoo/frontierbench41/actions/runs/35283872499) · [Run diary](RUN_DIARY.md) · [Evidence](evidence/native-run-3/)
+All 264 measured trials passed correctness, but the all-strong configuration achieved **0.797x**, below the frozen **1.25x** headroom requirement. Neither singleton recovery score is qualified. No full-study expansion was started.
 
-The pinned Cloudberry 2.0.0-incubating source builds, initializes a coordinator and two primary segments as `gpadmin` (UID 1000), and executes three GPORCA queries with exact, duplicate-sensitive SQLite result checks. Full build: 288.34 seconds; complete CI run: 455 seconds. The duplicate case returned 600 rows with 35 distinct rows.
-
-These are environment smoke checks on generated data, not a difficulty benchmark. **E/O recovery scores remain unmeasured.** The next gate is a controlled E/O pilot on a real small TPC-H workload. The minidump-only E hook must first be ported into the native path, and a competent O intervention must be verified. No stale fixture migration or full C/O/P build has started.
-
-The workflow lives on `gporca-native-gate`; pushes changing its workflow or helper scripts rerun it. Its job is bounded to 90 minutes. The database shuts down after the job; this is a reproducible execution environment, not a persistent server.
-
-The complete original evidence ZIP (31 files) and key receipts are committed in `evidence/native-run-3/` so they survive Actions artifact expiry. See the diary for the two resolved setup failures and the limits of the measured timings.
+[Protocol](EO_PILOT_PROTOCOL.md). The earlier native execution smoke gate is retained in `native-gate/`.
