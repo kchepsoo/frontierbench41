@@ -248,10 +248,20 @@ def audit(queries):
         for a, b in [('W', 'O'), ('E', 'EO')]:
             assert traces[n, a]['disabled'] == traces[n, b]['disabled'], 'O changed transform availability'
         assert traces[n, 'W']['disabled'] != traces[n, 'E']['disabled'], 'E inactive'
-        with connect(-1, -1) as db, db.cursor() as cur:
+        with connect(-1, -1, trace=True) as db, db.cursor() as cur:
+            # Declared E1 includes associativity; stock disables it by default.
+            # Configure the independent stock control to the SAME E1 policy.
+            cur.execute('SET optimizer_enable_associativity=on')
+            stock_pid = one(cur, 'SELECT pg_backend_pid()')
             stock = native_plan(cur, queries[n])
+        save(f'audit/q{n:02d}-stock-strong-control.json', stock)
+        stock_trace = parse_trace(LOG/'audit'/f'{stock_pid}.log')
+        assert stock_trace['disabled'] == traces[n, 'EO']['disabled'], 'stock control transform set differs'
         strong = json.loads((LOG/f'audit/q{n:02d}-EO-plan.json').read_text())
-        assert stock['Plan'] == strong['Plan'], 'explicit strong policy differs from stock DPv1 path'
+        assert stock['Plan'] == strong['Plan'], 'explicit strong policy differs from configured stock DPv1+reorder path'
+        summaries[f'q{n}-stock-control'] = {'backend_pid': stock_pid,
+            'optimizer_enable_associativity': 'on', 'physical_plan_equal': True,
+            'disabled_xforms_equal': True, 'raw_trace_sha256': stock_trace['raw_sha256']}
     fallback = []
     for e in (0, 1):
         with connect(e, 1, trace=True, mode='exhaustive2') as db, db.cursor() as cur:
