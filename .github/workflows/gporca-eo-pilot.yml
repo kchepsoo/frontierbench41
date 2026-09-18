@@ -77,9 +77,10 @@ jobs:
         run: |
           sudo python3 - "$RUNNER_TEMP/gporca-eo-pilot/logs" <<'PY_NAMES'
           from pathlib import Path
-          import sys
+          import sys, os
           root=Path(sys.argv[1])
           for p in root.rglob('*'):
+              os.chmod(p, 0o755 if p.is_dir() else 0o644)
               if p.is_file() and ':' in p.name:
                   target=p.with_name(p.name.replace(':','%3A'))
                   if target.exists():

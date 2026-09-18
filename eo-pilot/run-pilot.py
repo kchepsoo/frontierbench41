@@ -197,7 +197,10 @@ def statistics_snapshot():
 
 
 def parse_trace(path):
-    s = path.read_text()
+    raw = path.read_bytes()
+    # PostgreSQL stderr can contain binary collector framing. Preserve every
+    # byte; parse only the explicit ASCII audit markers. Never drop bytes.
+    s = raw.decode('latin-1')
     policies = re.findall(r'AUDIT_POLICY E (-?\d+) O (-?\d+) FALLBACK (\d) P_FIXED (\d)', s)
     disabled = re.findall(r'AUDIT_DISABLED_XFORMS ([0-9,]*)', s)
     costs = re.findall(r'AUDIT_COST (FULL|PARTIAL) MODEL (\d+) HOSTS (\d+) OP (\d+) INPUT (.*?) CHILDREN (.*?) OUTPUT ([^\n]+)', s)
@@ -208,7 +211,9 @@ def parse_trace(path):
         joins[key].add(requests)
     assert policies and disabled and costs, 'missing native policy/cost diagnostics'
     assert all(len(values) == 1 for values in joins.values()), 'P requests vary within a common join identity'
-    return {'policies': policies, 'disabled': disabled[-1], 'costs': costs,
+    return {'raw_sha256': hashlib.sha256(raw).hexdigest(),
+            'trace_view': 'byte-preserving Latin-1; ASCII audit markers',
+            'policies': policies, 'disabled': disabled[-1], 'costs': costs,
             'joins': {k: next(iter(v)) for k, v in joins.items()},
             'required_property_records': s.count('AUDIT_REQ_BEGIN')}
 
@@ -231,7 +236,7 @@ def audit(queries):
             assert {x[0] for x in t['costs']} == {'FULL', 'PARTIAL'}, 'missing full/partial repricing'
             assert t['required_property_records'] > 0
             save(f'audit/q{n:02d}-{cell}-plan.json', plan)
-            summaries[f'q{n}-{cell}'] = {'backend_pid': pid, 'policy': t['policies'][-1],
+            summaries[f'q{n}-{cell}'] = {'backend_pid': pid, 'raw_trace_sha256': t['raw_sha256'], 'policy': t['policies'][-1],
                 'disabled_xforms': t['disabled'], 'cost_calls': dict(Counter(x[0] for x in t['costs'])),
                 'join_identities': len(t['joins']), 'property_records': t['required_property_records']}
         for a, b in [('W', 'E'), ('O', 'EO'), ('W', 'O'), ('E', 'EO')]:
