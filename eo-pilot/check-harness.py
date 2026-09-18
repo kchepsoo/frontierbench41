@@ -8,7 +8,8 @@ import tempfile
 spec=importlib.util.spec_from_file_location('pilot', Path(__file__).with_name('run-pilot.py'))
 p=importlib.util.module_from_spec(spec);spec.loader.exec_module(p)
 p.compare_bags([(None, Decimal('2')), (None, Decimal('2'))], [(None, 2.0), (None, 2.000000001)])
-for a,b in [([(1,),(1,)],[(1,)]), ([(None,)],[(0,)]), ([(Decimal('2'),)],[(2.01,)])]:
+p.compare_bags([(1995,)], [(Decimal('1995'),)])
+for a,b in [([(1995,)],[(Decimal('1995.00000001'),)]), ([(1,),(1,)],[(1,)]), ([(None,)],[(0,)]), ([(Decimal('2'),)],[(2.01,)])]:
     try:p.compare_bags(a,b)
     except AssertionError:pass
     else:raise AssertionError('oracle accepted a counterexample')

@@ -94,14 +94,28 @@ def structural_plan(plan):
     return plan
 
 
-def exact_part(row):
-    return tuple(('number',) if isinstance(v, (Decimal, float)) else
-                 ('null',) if v is None else ('exact', str(v)) for v in row)
+def exact_part(row, integer_columns):
+    # EXTRACT(year) is integral in DuckDB but numeric in PostgreSQL 14.
+    # Canonicalize representations while preserving exact integer equality.
+    parts = []
+    for i, v in enumerate(row):
+        if v is None:
+            parts.append(('null',))
+        elif i in integer_columns and isinstance(v, numbers.Number):
+            parts.append(('integer', str(Decimal(str(v)).normalize())))
+        elif isinstance(v, (Decimal, float)):
+            parts.append(('number',))
+        else:
+            parts.append(('exact', str(v)))
+    return tuple(parts)
 
 
 def close(a, b):
     if a is None or b is None:
         return a is None and b is None
+    if isinstance(a, int) or isinstance(b, int):
+        return (isinstance(a, numbers.Number) and isinstance(b, numbers.Number)
+                and Decimal(str(a)) == Decimal(str(b)))
     if isinstance(a, (Decimal, float)) or isinstance(b, (Decimal, float)):
         if not isinstance(a, numbers.Number) or not isinstance(b, numbers.Number):
             return False
@@ -113,11 +127,12 @@ def close(a, b):
 def compare_bags(expected, actual):
     if len(expected) != len(actual):
         raise AssertionError(f'bag sizes differ: {len(expected)} vs {len(actual)}')
+    integer_columns = {i for row in expected for i, v in enumerate(row) if isinstance(v, int)}
     left, right = defaultdict(list), defaultdict(list)
     for row in expected:
-        left[exact_part(row)].append(row)
+        left[exact_part(row, integer_columns)].append(row)
     for row in actual:
-        right[exact_part(row)].append(row)
+        right[exact_part(row, integer_columns)].append(row)
     if left.keys() != right.keys():
         raise AssertionError('exact result fields or NULL positions differ')
     # Maximum bipartite matching preserves multiplicity and avoids ambiguous
@@ -292,6 +307,9 @@ def trial(n, query, expected, cell, repetition):
         first_cached = native_plan(cur, 'EXECUTE pilot_query')
         cur.execute('EXECUTE pilot_query')
         rows = cur.fetchall()
+        save('actual/'+tag+'.json', {'rows': rows,
+             'columns': [list(col) for col in cur.description],
+             'python_types': [[type(v).__name__ for v in row] for row in rows]})
         receipt = compare_bags(expected, rows)
         second_cached = native_plan(cur, 'EXECUTE pilot_query')
         after = one(cur, "SELECT generic_plans FROM pg_prepared_statements WHERE name='pilot_query'")
